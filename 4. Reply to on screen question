@@ -1,0 +1,101 @@
+# only for educational purposes
+import pyautogui
+from pynput import mouse, keyboard
+from PIL import Image
+import pytesseract
+import openai
+
+# Set up OpenAI API key (replace 'your_openai_api_key' with your actual API key)
+openai.api_key = 'API KEY'
+
+# Set the tesseract executable path (not needed on macOS, but required on Windows)
+pytesseract.pytesseract.tesseract_cmd = r"/opt/homebrew/bin/tesseract"  # For ARM-based Macs
+
+class CaptureOCR:
+    def __init__(self):
+        self.points = []
+
+    def on_key_press(self, key):
+        if key == keyboard.KeyCode.from_char('r'):
+            position = pyautogui.position()
+            self.points.append(position)
+            print(position)
+
+            if len(self.points) == 2:
+                return False  # Stop the keyboard listener
+
+    def capture_area(self, top_left, bottom_right, file_name):
+        screenshot = pyautogui.screenshot()
+        print(f"Cropping with coordinates: {top_left} - {bottom_right}")
+        pixelRatio = pyautogui.screenshot().size[0]/pyautogui.size().width
+        cropped_image = screenshot.crop((top_left[0]*pixelRatio, top_left[1]*pixelRatio, bottom_right[0]*pixelRatio, bottom_right[1]*pixelRatio))
+        cropped_image.save(file_name)
+
+    def ocr_image(self, file_name):
+        image = Image.open(file_name)
+        text = pytesseract.image_to_string(image)
+        return text
+# Call GPT-3 with the query
+def ask_gpt(query):
+    response = openai.Completion.create(
+        engine="text-davinci-002",
+        prompt=f"{query}\n",
+        max_tokens=50,
+        n=1,
+        stop=None,
+        temperature=0.5,
+    )
+
+    reply = response.choices[0].text.strip()
+    return reply
+
+def chatting(query):
+    response = openai.ChatCompletion.create(
+    model='gpt-3.5-turbo',
+    n=1,
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant with exciting, interesting things to say. Just Answer questions as asked to the point"},
+        {"role": "user", "content": query},
+    ])
+
+    message = response.choices[0]['message']
+    print("{}: {}".format(message['role'], message['content']))
+    return message['content']
+
+
+
+
+import pyttsx3
+
+def speak(text):
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 100)
+    engine.say(text)
+    engine.runAndWait()
+    
+    
+while True:
+    capture_ocr = CaptureOCR()
+
+    print("Press 'r' to record the mouse position twice.")
+    with keyboard.Listener(on_press=capture_ocr.on_key_press) as listener:
+        listener.join()
+
+    point1, point2 = capture_ocr.points
+
+    top_left = (min(point1[0], point2[0]), min(point1[1], point2[1]))
+    bottom_right = (max(point1[0], point2[0]), max(point1[1], point2[1]))
+
+    print("Capturing the area between the two points...")
+    file_name = "captured_area.png"
+    capture_ocr.capture_area(top_left, bottom_right, file_name)
+    print("Area captured and saved as 'captured_area.png'.")
+
+    print("Applying OCR on the captured image...")
+    text = capture_ocr.ocr_image(file_name)
+    print("OCR text:")
+    print(text)
+    ans =chatting(text)
+    print("ANswer:: ",ans)
+    speak("The Answer is  :"+ ans)
+    
