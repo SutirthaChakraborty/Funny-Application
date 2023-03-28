@@ -1,0 +1,23 @@
+import torch
+import imageio
+import numpy as np
+
+# Define text prompt
+text_prompt = "A cat chasing a mouse"
+
+# Load pre-trained GPT model
+model = torch.hub.load('EleutherAI/gpt-neo-1.3B', 'megatron', num_heads=16, num_layers=48)
+
+# Generate video frames from text prompt
+output_frames = []
+with torch.no_grad():
+    input_ids = torch.tensor(model.encode(text_prompt)).unsqueeze(0)
+    past = None
+    for i in range(100): # Generate 100 frames
+        output, past = model(input_ids, past=past)
+        frame = np.array(output[0, -1].permute(1, 2, 0).cpu().detach())
+        output_frames.append(frame)
+
+# Combine frames into video file
+output_filename = 'output.mp4'
+imageio.mimsave(output_filename, output_frames, fps=25)
