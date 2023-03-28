@@ -1,0 +1,62 @@
+# play drums with kuramoto oscillator
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import pygame
+
+# Parameters
+N = 5  # Number of oscillators
+K = 1  # Coupling strength
+duration = 10  # Duration of the simulation in seconds
+fps = 30  # Frames per second for visualization and sound
+dt = 1 / fps
+total_frames = int(duration * fps)
+
+# Initialize pygame for audio
+pygame.mixer.init()
+pygame.mixer.set_num_channels(N)
+
+# Load drum sounds
+drum_sounds = [pygame.mixer.Sound(f"sounds/drum{i + 1}.wav") for i in range(N)]
+
+# Initialize oscillator phases and frequencies
+np.random.seed(42)
+phases = np.random.uniform(0, 2 * np.pi, N)
+freqs = np.linspace(0.5, 1.5, N)  # Assign different frequencies to each oscillator
+
+# Kuramoto model update function
+def kuramoto(phases, freqs, K, dt):
+    N = len(phases)
+    d_phases = np.zeros(N)
+    for i in range(N):
+        d_phases[i] = freqs[i] + K * np.sum(np.sin(phases - phases[i])) / N
+    phases += d_phases * dt
+    return phases
+
+# Initialize the figure and axis for visualization
+fig, ax = plt.subplots()
+points, = plt.plot([], [], 'o', ms=10)
+ax.set_xlim(-1.5, 1.5)
+ax.set_ylim(-1.5, 1.5)
+
+# Animation update function
+def update(frame):
+    global phases
+    phases = kuramoto(phases, freqs, K, dt)
+    x = np.cos(phases)
+    y = np.sin(phases)
+
+    # Play drum sound if oscillator crosses the positive x-axis
+    for i in range(N):
+        if (x[i] > 0) and (np.cos(phases[i] - dt * freqs[i]) <= 0):
+            pygame.mixer.Channel(i).play(drum_sounds[i])
+
+    points.set_data(x, y)
+    return points,
+
+# Run the animation
+ani = FuncAnimation(fig, update, frames=total_frames, interval=dt * 1000, blit=True)
+plt.show()
+
+# Cleanup pygame
+pygame.mixer.quit()
