@@ -7,9 +7,13 @@ import time
 import cv2
 import pytesseract
 from difflib import SequenceMatcher
-import simpleaudio as sa
 import re
+import simpleaudio as sa
 
+import pyttsx3
+engine = pyttsx3.init()
+newVoiceRate = 145
+engine.setProperty('rate',newVoiceRate)
 # setting up tesseract path
 pytesseract.pytesseract.tesseract_cmd = r"/opt/homebrew/bin/tesseract"  # For ARM-based Macs
 
@@ -20,6 +24,24 @@ MIN_CONFIDENCE = 0.5
 RESIZED_WIDTH = 320
 RESIZED_HEIGHT = 320
 PADDING = 0.0
+
+import speech_recognition as sr
+
+def record_audio():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Please speak your query:")
+        audio = r.listen(source)
+
+    try:
+        query = r.recognize_google(audio,language='en-in')
+        print("You said: ", query)
+        return query
+    except sr.UnknownValueError:
+        print("Google Speech Recognition could not understand audio")
+    except sr.RequestError as e:
+        print("Could not request results from Google Speech Recognition service; {0}".format(e))
+
 
 
 def box_extractor(scores, geometry, min_confidence):
@@ -92,9 +114,13 @@ if __name__ == '__main__':
         vs = cv2.VideoCapture(VIDEO_PATH)
 
     fps = FPS().start()
+    engine.say("Ask for the direction you are looking for?")
+    engine.runAndWait()
 
-    target_word = input("Enter the target word: ")
-
+    # target_word = record_audio()
+    target_word=input("Enter the word :: ")
+    engine.say("Searching for "+target_word)
+    engine.runAndWait()
     while True:
         frame = vs.read()
         frame = frame[1] if VIDEO_PATH is not None else frame
@@ -159,9 +185,9 @@ if __name__ == '__main__':
                 freq = 200 + (center_x / orig_w) * 800
                 play_frequency(freq)
 
-            cv2.rectangle(orig, (start_x, start_y), (end_x, end_y), (0, 255, 0), 2)
-            cv2.putText(orig, text, (start_x, start_y - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                cv2.rectangle(orig, (start_x, start_y), (end_x, end_y), (0, 255, 0), 2)
+                cv2.putText(orig, text, (start_x, start_y - 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
 
         fps.update()
 
