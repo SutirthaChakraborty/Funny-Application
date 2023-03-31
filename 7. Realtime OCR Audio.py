@@ -119,8 +119,7 @@ if __name__ == '__main__':
 
     # target_word = record_audio()
     target_word=input("Enter the word :: ")
-    engine.say("Searching for "+target_word)
-    engine.runAndWait()
+
     while True:
         frame = vs.read()
         frame = frame[1] if VIDEO_PATH is not None else frame
