@@ -1,0 +1,157 @@
+
+import cv2
+import mediapipe as mp
+import math
+from playsound import playsound
+
+def euclidean_distance(x1, y1,  x2, y2):
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+mp_face_mesh = mp.solutions.face_mesh
+
+# Specify the text properties
+ 
+position = (50, 100)  # x, y coordinates of the bottom-left corner of the text
+font = cv2.FONT_HERSHEY_SIMPLEX
+font_scale = 1
+color = (0, 255, 0)  # BGR color (Green in this case)
+thickness = 2
+
+direction="Forward"
+buffer=[100]*50
+# For webcam input:
+drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+cap = cv2.VideoCapture(0)
+
+with mp_face_mesh.FaceMesh(
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5) as face_mesh:
+    
+    while cap.isOpened():
+        success, image = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
+
+        image.flags.writeable = False
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(image)
+
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                
+                 
+                rightUpper = face_landmarks.landmark[159]
+                rightLower = face_landmarks.landmark[145]
+                
+                rightUpper_x, rightUpper_y = int(rightUpper.x * image.shape[1]), int(rightUpper.y * image.shape[0])
+                rightLower_x, rightLower_y = int(rightLower.x * image.shape[1]), int(rightLower.y * image.shape[0])
+                rightirisCenter = face_landmarks.landmark[468]
+                rightirisCenter_x, rightirisCenter_y = int(rightirisCenter.x * image.shape[1]), int(rightirisCenter.y * image.shape[0])
+                
+                
+
+                
+                leftUpper = face_landmarks.landmark[386]
+                leftLower = face_landmarks.landmark[374]
+                leftUpper_x, leftUpper_y = int(leftUpper.x * image.shape[1]), int(leftUpper.y * image.shape[0])
+                leftLower_x, leftLower_y = int(leftLower.x * image.shape[1]), int(leftLower.y * image.shape[0])
+                
+                
+                # leftirisCenter = face_landmarks.landmark[473]
+                # leftirisCenter_x, leftirisCenter_y = int(leftirisCenter.x * image.shape[1]), int(leftirisCenter.y * image.shape[0])
+                # lefteyeoutsideCorner = face_landmarks.landmark[362]
+                # lefteyeinsideCorner = face_landmarks.landmark[263]
+                # lefteyeoutsideCorner_x, lefteyeoutsideCorner_y = int(lefteyeoutsideCorner.x * image.shape[1]), int(lefteyeoutsideCorner.y * image.shape[0])
+                # lefteyeinsideCorner_x, lefteyeinsideCorner_y = int(lefteyeinsideCorner.x * image.shape[1]), int(lefteyeinsideCorner.y * image.shape[0])
+                
+                lipUpper= face_landmarks.landmark[13]
+                lipsLower=face_landmarks.landmark[14]
+                lipsUpperX,lipsUpperY=  int(lipUpper.x * image.shape[1]), int(lipUpper.y * image.shape[0])
+                lipsLowerX,lipsLowerY= int(lipsLower.x * image.shape[1]), int(lipsLower.y * image.shape[0])
+                
+                mouthdistance = euclidean_distance(lipsUpperX,lipsUpperY,lipsLowerX,lipsLowerY)
+                
+                s =" "
+                if(mouthdistance >10):
+                    s= " go "
+                else:
+                    s= " stop "
+                    
+                # cv2.circle(image, (rightUpper_x, rightUpper_y), 2, (0, 255, 0), -1)
+                # cv2.circle(image, (rightLower_x, rightLower_y), 2, (0, 255, 0), -1)
+                
+                # cv2.circle(image, (leftUpper_x, leftUpper_y), 2, (255, 255, 0), -1)
+                # cv2.circle(image, (leftLower_x, leftLower_y), 2, (255, 255, 0), -1)
+                
+                # cv2.circle(image, (lefteyeoutsideCorner_x, lefteyeoutsideCorner_y), 2, (255, 255, 0), -1)
+                # cv2.circle(image, (lefteyeinsideCorner_x, lefteyeinsideCorner_y), 2, (255, 255, 0), -1)
+                
+                # cv2.circle(image, (rightirisCenter_x, rightirisCenter_y), 2, (0, 255, 0), -1)
+                # cv2.circle(image, (leftirisCenter_x, leftirisCenter_y), 2, (0, 255, 0), -1)
+                
+                cv2.circle(image, (lipsUpperX,lipsUpperY), 2, (0, 255, 0), -1)
+                cv2.circle(image, (lipsLowerX,lipsLowerY), 2, (0, 255, 0), -1)
+                
+                distR= euclidean_distance(rightUpper_x, rightUpper_y, rightLower_x, rightLower_y)
+                distL = euclidean_distance(leftUpper_x, leftUpper_y, leftLower_x, leftLower_y)
+                
+                
+                 
+                buffer.append(round(distR+distL)/2)
+                buffer=buffer[1:]
+                if(sum(buffer)/50 <10):
+                    if(direction=="Forward"):
+                        direction="Backward"
+                        buffer=[100]*50
+                    elif(direction=="Backward"):
+                        direction="IDLE"
+                        buffer=[100]*50
+                    else:
+                        direction="Forward"
+                        buffer=[100]*50
+                    playsound('click.wav')
+                if(direction=="IDLE"):
+                    s=direction
+                else:
+                    s+="    "+direction
+                cv2.putText(image, s, position, font, font_scale, color, thickness)
+
+                
+                # mp_drawing.draw_landmarks(
+                # image=image,
+                # landmark_list=face_landmarks,
+                # connections=mp_face_mesh.FACEMESH_TESSELATION,
+                # landmark_drawing_spec=None,
+                # connection_drawing_spec=mp_drawing_styles
+                # .get_default_face_mesh_tesselation_style())
+                # mp_drawing.draw_landmarks(
+                #     image=image,
+                #     landmark_list=face_landmarks,
+                #     connections=mp_face_mesh.FACEMESH_CONTOURS,
+                #     landmark_drawing_spec=None,
+                #     connection_drawing_spec=mp_drawing_styles
+                #     .get_default_face_mesh_contours_style())
+                mp_drawing.draw_landmarks(
+                    image=image,
+                    landmark_list=face_landmarks,
+                    connections=mp_face_mesh.FACEMESH_IRISES,
+                    landmark_drawing_spec=None,
+                    connection_drawing_spec=mp_drawing_styles
+                    .get_default_face_mesh_iris_connections_style())
+
+        # Flip the image horizontally for a selfie-view display.
+        cv2.imshow('MediaPipe Face Mesh', image)
+        
+        if cv2.waitKey(5) & 0xFF == 27:
+            break
+
+cap.release()
+cv2.destroyAllWindows()
