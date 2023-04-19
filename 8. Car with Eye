@@ -6,6 +6,7 @@ import math
 
 import pygame
 import threading
+import pyautogui
 
 pygame.init()
 pygame.mixer.init()
@@ -20,6 +21,56 @@ def play_sound_threaded():
 
 def euclidean_distance(x1, y1,  x2, y2):
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+
+
+# def control_movement(s):
+#     if 'stop' in s:
+#         pyautogui.keyUp('up')
+#         pyautogui.keyUp('down')
+
+#     if 'Forward' in s and 'go' in s:
+#         pyautogui.keyDown('up')
+#         pyautogui.keyUp('down')
+
+#     if 'Right' in s:
+#         pyautogui.press('right')
+
+#     if 'Left' in s:
+#         pyautogui.press('left')
+
+#     if 'Backward' in s and 'go' in s:
+#         pyautogui.keyDown('down')
+#         pyautogui.keyUp('up')
+
+
+
+
+def control_movement(s):
+    if 'stop' in s:
+        pyautogui.keyUp('up')
+        pyautogui.keyUp('down')
+
+    if 'Forward' in s and 'go' in s:
+        pyautogui.keyDown('up')
+        pyautogui.keyUp('down')
+
+    if 'Right' in s:
+        pyautogui.keyDown('right')
+        pyautogui.keyUp('left')
+
+    if 'Left' in s:
+        pyautogui.keyDown('left')
+        pyautogui.keyUp('right')
+
+    if 'Backward' in s and 'go' in s:
+        pyautogui.keyDown('down')
+        pyautogui.keyUp('up')
+
+    if 'Straight' in s:
+        pyautogui.keyUp('left')
+        pyautogui.keyUp('right')
+
 
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
@@ -36,10 +87,10 @@ thickness = 2
 MOUTH_DISTANCE_VARIABLE=10
 IRIS_ANGLE_DISTANCE=5
 LEFT_ABS_IRIS=6
-RIGHT_ABS_IRIS=1
+RIGHT_ABS_IRIS=0.52
 
 direction="Forward"
-buffer=[100]*50
+buffer=[100]*30
 
 
 # For webcam input:
@@ -76,8 +127,6 @@ with mp_face_mesh.FaceMesh(
                 rightLower_x, rightLower_y = int(rightLower.x * image.shape[1]), int(rightLower.y * image.shape[0])
 
                 
-
-                
                 leftUpper = face_landmarks.landmark[386]
                 leftLower = face_landmarks.landmark[374]
                 leftUpper_x, leftUpper_y = int(leftUpper.x * image.shape[1]), int(leftUpper.y * image.shape[0])
@@ -104,7 +153,7 @@ with mp_face_mesh.FaceMesh(
                 mouthdistance = euclidean_distance(lipsUpperX,lipsUpperY,lipsLowerX,lipsLowerY)
                 
                 s =" "
-                if(mouthdistance >MOUTH_DISTANCE_VARIABLE):
+                if(mouthdistance > MOUTH_DISTANCE_VARIABLE):
                     s= " go "
                 else:
                     s= " stop "
@@ -122,6 +171,7 @@ with mp_face_mesh.FaceMesh(
                 if(sum(buffer)/50 <10):
                     if(direction=="Forward"):
                         direction="Backward"
+                        
                         buffer=[100]*50
                     elif(direction=="Backward"):
                         direction="IDLE"
@@ -129,6 +179,7 @@ with mp_face_mesh.FaceMesh(
                     else:
                         direction="Forward"
                         buffer=[100]*50
+                        
                     play_sound_threaded()
                 if(direction=="IDLE"):
                     s=direction
@@ -138,11 +189,16 @@ with mp_face_mesh.FaceMesh(
                 
                 if (iris_distance>0 and abs(iris_distance)>LEFT_ABS_IRIS):
                     s+='  Left'+str(iris_distance)
+                    
                 elif (iris_distance<0 and abs(iris_distance)>RIGHT_ABS_IRIS):
-                    s+='  Right' +str(iris_distance)                  
+                    s+='  Right' +str(iris_distance)  
+                                   
                 else:
                     s+='  Straight '+str(iris_distance) 
 
+                control_thread = threading.Thread(target=control_movement, args=(s,))
+                control_thread.start()
+                
                 cv2.putText(image, s, position, font, font_scale, color, thickness)
                 mp_drawing.draw_landmarks(
                     image=image,
@@ -153,7 +209,9 @@ with mp_face_mesh.FaceMesh(
                     .get_default_face_mesh_iris_connections_style())
 
         # Flip the image horizontally for a selfie-view display.
-        cv2.imshow('MediaPipe Face Mesh', image)
+        resized_image = cv2.resize(image, (700, 400))
+        cv2.imshow('MediaPipe Face Mesh', resized_image)
+
         
         if cv2.waitKey(5) & 0xFF == 27:
             break
