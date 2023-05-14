@@ -13,7 +13,7 @@ balance = 0
 def scale_balance(balance):
     # Original range: [-10, 10]
     # New range: [0, 1]
-    new_balance = (balance + 8) / 16
+    new_balance = (balance + 7) / 14
     return new_balance
 
 # Audio callback function
@@ -36,7 +36,7 @@ def callback(outdata, frames, time, status):
 
 # Load wav files
 left_wav_file = 'audio1.wav'
-right_wav_file = 'audio2.wav'
+right_wav_file = 'audio1.wav'
 
 left_wave, left_sr = sf.read(left_wav_file, dtype='float32', always_2d=True)
 right_wave, right_sr = sf.read(right_wav_file, dtype='float32', always_2d=True)
