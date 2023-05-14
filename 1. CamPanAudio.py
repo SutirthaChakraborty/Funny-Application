@@ -21,11 +21,20 @@ def callback(outdata, frames, time, status):
     global current_frame
     global balance
 
+    if current_frame + frames > len(left_wave):
+        raise sd.CallbackStop
+
     left_data = left_wave[current_frame:current_frame + frames, :]
     right_data = right_wave[current_frame:current_frame + frames, :]
 
-    left_volume = max(min(0.5 + balance / 2, 1), 0)
-    right_volume = max(min(0.5 - balance / 2, 1), 0)
+    if balance >=0:
+        left_volume = max(min(0.5 + balance / 2, 1), 0)
+        right_volume = max(min(0.5 - balance / 2, 1), 0)
+    else:
+        right_volume = max(min(0.5 + abs(balance) / 2, 1), 0)
+        left_volume = max(min(0.5 - abs(balance) / 2, 1), 0)
+    
+    # print(left_volume,right_volume)
 
     outdata[:, 0] = left_data[:, 0] * left_volume
     outdata[:, 1] = right_data[:, 0] * right_volume
@@ -37,6 +46,11 @@ def callback(outdata, frames, time, status):
 # Load wav files
 left_wav_file = 'audio1.wav'
 right_wav_file = 'audio1.wav'
+# Load second video
+cap2 = cv2.VideoCapture('vid.mp4')
+prev_cropped_image2=np.zeros((100,100,3),np.uint8)
+window_size = 100  # size of the moving window
+
 
 left_wave, left_sr = sf.read(left_wav_file, dtype='float32', always_2d=True)
 right_wave, right_sr = sf.read(right_wav_file, dtype='float32', always_2d=True)
@@ -44,16 +58,28 @@ right_wave, right_sr = sf.read(right_wav_file, dtype='float32', always_2d=True)
 # Initialize audio stream
 blocksize = 1024
 
-stream = sd.OutputStream(samplerate=left_sr, channels=2, dtype='float32', blocksize=blocksize, callback=callback)
-stream.start()
+# stream = sd.OutputStream(samplerate=left_sr, channels=2, dtype='float32', blocksize=blocksize, callback=callback)
+# stream.start()
+
+def start_audio_stream():
+    global stream
+    stream = sd.OutputStream(samplerate=left_sr, channels=2, dtype='float32', blocksize=blocksize, callback=callback)
+    stream.start()
+
 
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
 cap = cv2.VideoCapture(0)
+# Ensure that the video has started before starting the audio
+if cap.isOpened():
+    start_audio_stream()
+
 
 while cap.isOpened():
     success, image = cap.read()
+    success2, image2 = cap2.read()
 
     # Flip the image horizontally for a later selfie-view display
     # Also convert the color space from BGR to RGB
@@ -120,8 +146,6 @@ while cap.isOpened():
             x = round(angles[0] * 360)
             y = round(angles[1] * 360)
 
-            # print(y)
-
             # # See where the user's head tilting
             # if y < -10:
             #     text = "Looking Left"
@@ -133,17 +157,38 @@ while cap.isOpened():
             #     text = "Forward"
 
             # Display the nose direction
-            nose_3d_projection, jacobian = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
+            # nose_3d_projection, jacobian = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
 
-            p1 = (int(nose_2d[0]), int(nose_2d[1]))
-            p2 = (int(nose_3d_projection[0][0][0]), int(nose_3d_projection[0][0][1]))
-            
-            cv2.line(image, p1, p2, (255, 0, 0), 2)
-            
-            balance=scale_balance(y)
-            
+            # p1 = (int(nose_2d[0]), int(nose_2d[1]))
+            # p2 = (int(nose_3d_projection[0][0][0]), int(nose_3d_projection[0][0][1]))
+            # cv2.line(image, p1, p2, (255, 0, 0), 2)
+                        
+            balance=min(y/10,1)
             # Add the text on the image
-            cv2.putText(image, str(round(x))+"   ,  "+str(round(y)), (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5)
+            cv2.putText(image, str(y), (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5)
+
+            
+        if success2:
+            # Normalize the y value to the height of the second video
+            dim = (image2.shape[1] - 100, image2.shape[0] - 100)
+            width, height = image2.shape[1], image2.shape[0]
+            crop_width = dim[0] if dim[0]<image2.shape[1] else image2.shape[1]
+            crop_height = dim[1] if dim[1]<image2.shape[0] else image2.shape[0] 
+            mid_x, mid_y = int(width/2), int(height/2)
+            cw2, ch2 = int(crop_width/2), int(crop_height/2)
+            x_factor= 5
+            y_factor= 12
+            
+            a= mid_y-ch2+(x*5) if mid_y-ch2+( x * x_factor ) > 0 else 0
+            b= mid_y+ch2+(x*5) if mid_y+ch2+( x * x_factor ) < image2.shape[0] else image2.shape[0]
+            c= mid_x-cw2+(y*10)  if mid_x-cw2+( y * y_factor ) > 0 else 0
+            d= mid_x+cw2+(y*10) if mid_x+cw2+( y * y_factor ) < image2.shape[1] else image2.shape[1]
+            
+            cropped_image2 = image2[a:b, c:d]
+            cropped_image2 = cv2.resize(cropped_image2, dim, interpolation=cv2.INTER_AREA)
+
+            # Display the cropped video 
+            cv2.imshow('Cropped Video', cropped_image2)
 
     cv2.imshow('Head Pose Estimation', image)
 
