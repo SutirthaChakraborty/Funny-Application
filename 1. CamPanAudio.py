@@ -1,34 +1,31 @@
-# This Python code captures real-time webcam video and uses the MediaPipe Pose model to detect the user's head rotation. 
-# Based on the head rotation, it adjusts the volume of two different audio channels (left and right) to create a crossfading effect, 
-# making it seem like the sound source is in front of the listener.
 
-import cv2
-import mediapipe as mp
-import numpy as np
-import time
 import cv2
 import mediapipe as mp
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
-import time
 
-# Initialize MediaPipe Pose
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose()
-
-
-balance = 0
+# Global variables
 current_frame = 0
+balance = 0
 
+
+def scale_balance(balance):
+    # Original range: [-10, 10]
+    # New range: [0, 1]
+    new_balance = (balance + 8) / 16
+    return new_balance
+
+# Audio callback function
 def callback(outdata, frames, time, status):
     global current_frame
+    global balance
 
     left_data = left_wave[current_frame:current_frame + frames, :]
     right_data = right_wave[current_frame:current_frame + frames, :]
 
-    left_volume = max(min(0.5 - balance / 2, 1), 0)
-    right_volume = max(min(0.5 + balance / 2, 1), 0)
+    left_volume = max(min(0.5 + balance / 2, 1), 0)
+    right_volume = max(min(0.5 - balance / 2, 1), 0)
 
     outdata[:, 0] = left_data[:, 0] * left_volume
     outdata[:, 1] = right_data[:, 0] * right_volume
@@ -37,10 +34,9 @@ def callback(outdata, frames, time, status):
     if current_frame >= len(left_wave):
         current_frame = 0
 
-
 # Load wav files
-left_wav_file = '1.wav'
-right_wav_file = '2.wav'
+left_wav_file = 'audio1.wav'
+right_wav_file = 'audio2.wav'
 
 left_wave, left_sr = sf.read(left_wav_file, dtype='float32', always_2d=True)
 right_wave, right_sr = sf.read(right_wav_file, dtype='float32', always_2d=True)
@@ -52,76 +48,106 @@ stream = sd.OutputStream(samplerate=left_sr, channels=2, dtype='float32', blocks
 stream.start()
 
 
-def calculate_head_rotation(left_ear, right_ear, nose_tip):
-    left_ear_to_nose = np.linalg.norm(nose_tip - left_ear)
-    right_ear_to_nose = np.linalg.norm(nose_tip - right_ear)
-
-    if left_ear_to_nose == 0 or right_ear_to_nose == 0:
-        return 0
-    else:
-        ratio = (right_ear_to_nose / left_ear_to_nose) - 1
-        return ratio
-
-
-# Initialize webcam
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 cap = cv2.VideoCapture(0)
 
-# Set the desired FPS
-desired_fps = 15
-frame_time = 1 / desired_fps
-ema_alpha = 0.1  # You can adjust this value for more or less smoothing (0 < ema_alpha < 1)
+while cap.isOpened():
+    success, image = cap.read()
 
-try:
-    while True:
-        start_time = time.time()
+    # Flip the image horizontally for a later selfie-view display
+    # Also convert the color space from BGR to RGB
+    image = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
 
-        ret, frame = cap.read()
-        if not ret:
-            break
+    # To improve performance
+    image.flags.writeable = False
+    
+    # Get the result
+    results = face_mesh.process(image)
+    
+    # To improve performance
+    image.flags.writeable = True
+    
+    # Convert the color space from RGB to BGR
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pose_result = pose.process(frame_rgb)
+    img_h, img_w, img_c = image.shape
+    face_3d = []
+    face_2d = []
 
-        if pose_result.pose_landmarks:
-            left_ear = np.array([pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR].x,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR].y,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR].z])
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
+            for idx, lm in enumerate(face_landmarks.landmark):
+                if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
+                    if idx == 1:
+                        nose_2d = (lm.x * img_w, lm.y * img_h)
+                        nose_3d = (lm.x * img_w, lm.y * img_h, lm.z * 8000)
 
-            right_ear = np.array([pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR].x,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR].y,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR].z])
+                    x, y = int(lm.x * img_w), int(lm.y * img_h)
 
-            nose_tip = np.array([pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.NOSE].x,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.NOSE].y,
-                                    pose_result.pose_world_landmarks.landmark[mp_pose.PoseLandmark.NOSE].z])
+                    # Get the 2D Coordinates
+                    face_2d.append([x, y])
 
-            rotation = calculate_head_rotation(left_ear, right_ear, nose_tip) 
-            balance = (1 - ema_alpha) * balance + ema_alpha * rotation*10
+                    # Get the 3D Coordinates
+                    face_3d.append([x, y, lm.z])       
             
-            # Convert the rotation value to degrees and format as a string
-            angle_text = f"Angle: {rotation * 90:.2f} degree, Balance : {balance:.2f}"
+            # Convert it to the NumPy array
+            face_2d = np.array(face_2d, dtype=np.float64)
 
-            # Display the angle on the frame
-            cv2.putText(frame, angle_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            # Convert it to the NumPy array
+            face_3d = np.array(face_3d, dtype=np.float64)
 
-            left_volume = max(min(0.5 - balance / 2, 1), 0)
-            right_volume = max(min(0.5 + balance / 2, 1), 0)
+            # The camera matrix
+            focal_length = 1 * img_w
 
+            cam_matrix = np.array([ [focal_length, 0, img_h / 2],
+                                    [0, focal_length, img_w / 2],
+                                    [0, 0, 1]])
 
-        # Display the webcam feed
-        cv2.imshow('Webcam', frame)
+            # The Distance Matrix
+            dist_matrix = np.zeros((4, 1), dtype=np.float64)
 
-        # Break the loop when the 'q' key is pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            # Solve PnP
+            success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
 
-        # Limit the FPS
-        elapsed_time = time.time() - start_time
-        if elapsed_time < frame_time:
-            time.sleep(frame_time - elapsed_time)
-finally:
-    # Release resources
-    cap.release()
-    cv2.destroyAllWindows()
-    stream.stop()
-    stream.close()
+            # Get rotational matrix
+            rmat, jac = cv2.Rodrigues(rot_vec)
+
+            # Get angles
+            angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
+
+            # Get the y rotation degree
+            x = round(angles[0] * 360)
+            y = round(angles[1] * 360)
+
+            # print(y)
+
+            # # See where the user's head tilting
+            # if y < -10:
+            #     text = "Looking Left"
+            # elif y > 10:
+            #     text = "Looking Right"
+            # elif x < -10:
+            #     text = "Looking Down"
+            # else:
+            #     text = "Forward"
+
+            # Display the nose direction
+            nose_3d_projection, jacobian = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
+
+            p1 = (int(nose_2d[0]), int(nose_2d[1]))
+            p2 = (int(nose_3d_projection[0][0][0]), int(nose_3d_projection[0][0][1]))
+            
+            cv2.line(image, p1, p2, (255, 0, 0), 2)
+            
+            balance=scale_balance(y)
+            
+            # Add the text on the image
+            cv2.putText(image, str(round(x))+"   ,  "+str(round(y)), (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 5)
+
+    cv2.imshow('Head Pose Estimation', image)
+
+    if cv2.waitKey(5) & 0xFF == 27:
+        break
+
+cap.release()
