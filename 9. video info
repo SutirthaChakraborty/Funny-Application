@@ -1,0 +1,58 @@
+from transformers import VideoMAEImageProcessor, VideoMAEForVideoClassification
+import cv2
+import numpy as np
+import torch
+
+# Load the processor and model
+processor = VideoMAEImageProcessor.from_pretrained("MCG-NJU/videomae-base-finetuned-ssv2")
+model = VideoMAEForVideoClassification.from_pretrained("MCG-NJU/videomae-base-finetuned-ssv2")
+
+# Initialize webcam
+cap = cv2.VideoCapture(0)
+
+# Buffer to store video frames
+frame_buffer = []
+
+try:
+    while True:
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Convert the captured frame from BGR to RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Resize and append to buffer
+        rgb_frame = cv2.resize(rgb_frame, (224, 224))
+        frame_buffer.append(rgb_frame)
+
+        # Ensure we get 16 frames before making a prediction
+        if len(frame_buffer) == 16:
+            # Convert to numpy array and process
+            video = np.array(frame_buffer)
+            video = video.transpose((0, 3, 1, 2))
+            inputs = processor(list(video), return_tensors="pt")
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+                logits = outputs.logits
+
+            predicted_class_idx = logits.argmax(-1).item()
+            predicted_class = model.config.id2label[predicted_class_idx]
+            # print("Predicted class:", predicted_class)
+
+            # Display the resulting frame
+            cv2.putText(frame, f'Class: {predicted_class}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            frame_buffer.pop(0)  # Remove the oldest frame
+
+        cv2.imshow('Webcam - Video Classification', frame)
+
+        # Break the loop
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+finally:
+    # When everything done, release the capture
+    cap.release()
+    cv2.destroyAllWindows()
