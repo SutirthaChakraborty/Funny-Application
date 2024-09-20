@@ -416,6 +416,10 @@ class GazeControlledMouse:
         self.speak("Starting gaze tracking. Press Control Escape to quit.")
         # print("Starting gaze tracking. Press Ctrl+Escape to quit.")
 
+        # Initialize frame buffer for stability check
+        frame_buffer = []
+        buffer_size = 3  # Number of frames to consider for confirmation
+
         while True:
             ret, frame = self.cap.read()
             if not ret:
@@ -425,6 +429,8 @@ class GazeControlledMouse:
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = self.face_mesh.process(frame_rgb)
+
+            # Check if a face is detected
             if results.multi_face_landmarks:
                 face_landmarks = results.multi_face_landmarks[0]
                 # Convert landmarks to a list of tuples (x, y)
@@ -456,44 +462,57 @@ class GazeControlledMouse:
                     (left_iris[1] + right_iris[1]) / 2,
                 )
 
-                monitor_idx = self.map_gaze_to_monitor(
-                    avg_gaze, frame.shape[1], frame.shape[0]
-                )
+                # Add the gaze data to the frame buffer
+                frame_buffer.append(avg_gaze)
+                if len(frame_buffer) > buffer_size:
+                    frame_buffer.pop(0)
 
-                if monitor_idx is not None:
-                    if monitor_idx != self.last_monitor:
-                        # If switching monitors, save the current position of the previous monitor
-                        if self.last_monitor is not None:
-                            current_pos = pyautogui.position()
-                            self.last_positions[self.last_monitor] = current_pos
-                            # print(
-                            #     f"Saved position {current_pos} for monitor {self.last_monitor + 1}"
-                            # )
+                # Check for stability: only proceed if the gaze is stable across the last 3 frames
+                if len(frame_buffer) == buffer_size:
+                    # Calculate the average gaze over the last 3 frames
+                    avg_gaze_stable = (
+                        np.mean([point[0] for point in frame_buffer]),
+                        np.mean([point[1] for point in frame_buffer]),
+                    )
 
-                        # Determine where to move the cursor
-                        if self.last_positions[monitor_idx] is not None:
-                            target_x, target_y = self.last_positions[monitor_idx]
-                            # print(
-                            #     f"Moving to saved position ({target_x}, {target_y}) on monitor {monitor_idx + 1}"
-                            # )
-                        else:
-                            # If no saved position, move to the center
-                            monitor = self.monitors[monitor_idx]
-                            target_x = monitor.x + monitor.width // 2
-                            target_y = monitor.y + monitor.height // 2
-                            # print(
-                            #     f"No saved position. Moving to center ({target_x}, {target_y}) on monitor {monitor_idx + 1}"
-                            # )
+                    monitor_idx = self.map_gaze_to_monitor(
+                        avg_gaze_stable, frame.shape[1], frame.shape[0]
+                    )
 
-                        # Move the mouse to the target position instantly
-                        self.move_mouse_to_position(target_x, target_y)
+                    if monitor_idx is not None:
+                        if monitor_idx != self.last_monitor:
+                            # If switching monitors, save the current position of the previous monitor
+                            if self.last_monitor is not None:
+                                current_pos = pyautogui.position()
+                                self.last_positions[self.last_monitor] = current_pos
+                                # print(
+                                #     f"Saved position {current_pos} for monitor {self.last_monitor + 1}"
+                                # )
 
-                        # Update last_monitor
-                        self.last_monitor = monitor_idx
+                            # Determine where to move the cursor
+                            if self.last_positions[monitor_idx] is not None:
+                                target_x, target_y = self.last_positions[monitor_idx]
+                                # print(
+                                #     f"Moving to saved position ({target_x}, {target_y}) on monitor {monitor_idx + 1}"
+                                # )
+                            else:
+                                # If no saved position, move to the center
+                                monitor = self.monitors[monitor_idx]
+                                target_x = monitor.x + monitor.width // 2
+                                target_y = monitor.y + monitor.height // 2
+                                # print(
+                                #     f"No saved position. Moving to center ({target_x}, {target_y}) on monitor {monitor_idx + 1}"
+                                # )
 
+                            # Move the mouse to the target position instantly
+                            self.move_mouse_to_position(target_x, target_y)
+
+                            # Update last_monitor
+                            self.last_monitor = monitor_idx
             else:
-                # print("Face not detected.")
-                pass
+                # If no face is detected, clear the frame buffer
+                frame_buffer = []
+                # print("Face not detected. Cursor remains in the same position.")
 
     def cleanup(self):
         """Releases camera resources."""
