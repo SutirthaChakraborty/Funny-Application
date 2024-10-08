@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unicode Webcam Art - Real-time Color</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+            color: #FFF;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        #asciiOutput {
+            width: 100%;
+            height: 100%;
+            font-size: 1vw; /* Start small, we'll adjust dynamically */
+            line-height: 1;
+            white-space: pre;
+            text-align: center;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <pre id="asciiOutput">Loading...</pre>
+    <script>
+        const GRADIENT = "@%#*+=-:. ";  // Darker to lighter gradient
+        const asciiOutput = document.getElementById('asciiOutput');
+        let targetWidth, targetHeight;
+
+        // Function to initialize the webcam and start capturing frames
+        async function startAsciiArt() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.play();
+            video.addEventListener('loadeddata', () => {
+                updateDimensions(video);
+                processFrame(video);
+            });
+        }
+
+        // Function to update dimensions based on window size
+        function updateDimensions(video) {
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            const windowAspectRatio = windowWidth / windowHeight;
+
+            if (windowAspectRatio > aspectRatio) {
+                // Window is wider than video
+                targetHeight = Math.floor(windowHeight / 12); // Adjust divisor for density
+                targetWidth = Math.floor(targetHeight * aspectRatio);
+            } else {
+                // Window is taller than video
+                targetWidth = Math.floor(windowWidth / 12); // Adjust divisor for density
+                targetHeight = Math.floor(targetWidth / aspectRatio);
+            }
+
+            // Adjust font size
+            const fontSize = Math.max(0.5, Math.min(windowWidth / targetWidth, windowHeight / targetHeight));
+            asciiOutput.style.fontSize = `${fontSize}px`;
+        }
+
+        // Function to convert video frame to ASCII art
+        function processFrame(video) {
+            const canvas = document.createElement('canvas');
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            const context = canvas.getContext('2d');
+            
+            // Draw the video frame onto the canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Get pixel data from canvas
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+            
+            // Convert pixels to ASCII art with color
+            let asciiArt = "";
+            for (let y = 0; y < canvas.height; y++) {
+                let row = "";
+                for (let x = 0; x < canvas.width; x++) {
+                    const i = (y * canvas.width + x) * 4;
+                    const r = pixels[i];
+                    const g = pixels[i + 1];
+                    const b = pixels[i + 2];
+                    const avg = (r + g + b) / 3;  // Average for intensity
+                    
+                    // Select character based on intensity
+                    const char = GRADIENT[Math.floor((avg / 255) * (GRADIENT.length - 1))];
+                    row += `<span style="color:rgb(${r},${g},${b})">${char}</span>`;
+                }
+                asciiArt += row + "\n";
+            }
+            asciiOutput.innerHTML = asciiArt;
+            // Request the next frame
+            requestAnimationFrame(() => processFrame(video));
+        }
+
+        // Start the ASCII art conversion when the page loads
+        startAsciiArt();
+
+        // Update dimensions on window resize
+        window.addEventListener('resize', () => {
+            const video = document.querySelector('video');
+            if (video) {
+                updateDimensions(video);
+            }
+        });
+    </script>
+</body>
+</html>
